@@ -345,3 +345,31 @@ def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db), cur
         db.add(compromiso)
     db.commit()
     return {"id": proyecto.id, "nombre": proyecto.nombre}
+
+@app.get("/ongs/")
+def get_ongs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(ONG).all()
+
+@app.get("/proyectos/")
+def get_proyectos(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Proyecto).all()
+
+@app.get("/planes_trabajo/")
+def get_planes_trabajo(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(PlanTrabajo).all()
+
+@app.get("/etapas/")
+def get_etapas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Etapa).all()
+
+@app.get("/pedidos_cobertura/")
+def get_pedidos_cobertura(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(PedidoCobertura).all()
+
+@app.get("/tipos_cobertura/")
+def get_tipos_cobertura(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(TipoCobertura).all()
+
+@app.get("/compromisos/")
+def get_compromisos(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Compromiso).all()
