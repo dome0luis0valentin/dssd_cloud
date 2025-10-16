@@ -7,18 +7,21 @@ from typing import Union
 from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
+import api_project
+from database import SessionLocal
 
 # ==============================
 # CONFIGURACIÓN GENERAL
 # ==============================
-SECRET_KEY = "clave_super_secreta_para_jwt"
+import os
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Base de datos en memoria (puedes usar SQLite persistente si quieres)
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+# SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 
 # ==============================
@@ -49,6 +52,10 @@ class UserInDB(User):
 
 class ProjectCreate(BaseModel):
     name: str
+
+class ONGRequest(BaseModel):
+    nombre: str
+    usuario_ids: list[int] = []
 
 # ==============================
 # AUTENTICACIÓN
@@ -141,3 +148,198 @@ def create_project(project: ProjectCreate, current_user: User = Depends(get_curr
     db.refresh(new_project)
     db.close()
     return {"message": f"Proyecto '{project.name}' creado correctamente"}
+
+# 1. Crear ONG
+from models import Base
+Base.metadata.create_all(bind=engine)
+from models import ONG
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.post("/ongs/")
+def crear_ong(request: ONGRequest, db: Session = Depends(get_db)):
+    ong = ONG(nombre=request.nombre)
+    db.add(ong)
+    db.commit()
+    db.refresh(ong)
+    # Asociar usuarios si se pasan
+    # ... (lógica para asociar usuarios)
+    return {"id": ong.id, "nombre": ong.nombre}
+
+from models import ONG, Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso
+from typing import List, Optional
+
+
+# Esquemas para requests anidados
+class TipoCoberturaIn(BaseModel):
+    nombre: str
+
+class PedidoCoberturaIn(BaseModel):
+    descripcion: str
+    tipo_cobertura: TipoCoberturaIn
+
+class CompromisoIn(BaseModel):
+    descripcion: str
+
+class EtapaIn(BaseModel):
+    nombre: str
+
+class PlanTrabajoIn(BaseModel):
+    nombre: str
+
+class ONGIn(BaseModel):
+    nombre: str
+
+class ProyectoFullIn(BaseModel):
+    nombre: str
+    creador: ONGIn
+    ongs_participantes: List[ONGIn] = []
+    planes_trabajo: List[PlanTrabajoIn] = []
+    etapas: List[EtapaIn] = []
+    pedidos_cobertura: List[PedidoCoberturaIn] = []
+    compromisos: List[CompromisoIn] = []
+
+# 2. Crear Proyecto con Planes de Trabajo y Pedidos de Cobertura
+@app.post("/proyectos/")
+def crear_proyecto(
+    nombre: str,
+    creador_id: int,
+    planes_trabajo: list[str] = [],
+    pedidos_cobertura: list[dict] = [],
+    db: Session = Depends(get_db)
+):
+    creador = db.query(ONG).filter(ONG.id == creador_id).first()
+    if not creador:
+        raise HTTPException(status_code=404, detail="ONG creadora no encontrada")
+    proyecto = Proyecto(nombre=nombre, creador=creador)
+    db.add(proyecto)
+    db.commit()
+    db.refresh(proyecto)
+    # Cargar planes de trabajo
+    for nombre_plan in planes_trabajo:
+        plan = PlanTrabajo(nombre=nombre_plan, proyecto=proyecto)
+        db.add(plan)
+    # Cargar pedidos de cobertura
+    for pedido in pedidos_cobertura:
+        tipo = db.query(TipoCobertura).filter(TipoCobertura.id == pedido["tipo_id"]).first()
+        pedido_obj = PedidoCobertura(descripcion=pedido["descripcion"], proyecto=proyecto, tipo_cobertura=tipo)
+        db.add(pedido_obj)
+    db.commit()
+    return {"id": proyecto.id, "nombre": proyecto.nombre}
+
+# 3. Asociar ONG a Proyecto (Participa)
+@app.post("/proyectos/{proyecto_id}/participa/")
+def agregar_ong_a_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(get_db)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    ong = db.query(ONG).filter(ONG.id == ong_id).first()
+    if not proyecto or not ong:
+        raise HTTPException(status_code=404, detail="Proyecto u ONG no encontrados")
+    proyecto.ongs.append(ong)
+    db.commit()
+    return {"message": "ONG asociada al proyecto"}
+
+# 4. Crear Plan de Trabajo
+@app.post("/planes_trabajo/")
+def crear_plan_trabajo(nombre: str, proyecto_id: int, db: Session = Depends(get_db)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    plan = PlanTrabajo(nombre=nombre, proyecto=proyecto)
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return {"id": plan.id, "nombre": plan.nombre}
+
+# 5. Crear Etapa
+@app.post("/etapas/")
+def crear_etapa(nombre: str, proyecto_id: int, db: Session = Depends(get_db)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    etapa = Etapa(nombre=nombre, proyecto=proyecto)
+    db.add(etapa)
+    db.commit()
+    db.refresh(etapa)
+    return {"id": etapa.id, "nombre": etapa.nombre}
+
+# 6. Crear Pedido de Cobertura
+@app.post("/pedidos_cobertura/")
+def crear_pedido_cobertura(descripcion: str,
+                            proyecto_id: int,
+                            tipo_id: int,
+                            db: Session = Depends(get_db)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    tipo = db.query(TipoCobertura).filter(TipoCobertura.id == tipo_id).first()
+    pedido = PedidoCobertura(descripcion=descripcion, proyecto=proyecto, tipo_cobertura=tipo)
+    db.add(pedido)
+    db.commit()
+    db.refresh(pedido)
+    return {"id": pedido.id, "descripcion": pedido.descripcion}
+
+# 7. Crear Compromiso
+@app.post("/compromisos/")
+def crear_compromiso(descripcion: str, proyecto_id: int, db: Session = Depends(get_db)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    compromiso = Compromiso(descripcion=descripcion, proyecto=proyecto)
+    db.add(compromiso)
+    db.commit()
+    db.refresh(compromiso)
+    return {"id": compromiso.id, "descripcion": compromiso.descripcion}
+
+# 8. Crear Tipo de Cobertura
+@app.post("/tipos_cobertura/")
+def crear_tipo_cobertura(nombre: str, db: Session = Depends(get_db)):
+    tipo = TipoCobertura(nombre=nombre)
+    db.add(tipo)
+    db.commit()
+    db.refresh(tipo)
+    return {"id": tipo.id, "nombre": tipo.nombre}
+
+# 9. Crear Proyecto con carga completa
+@app.post("/proyectos/full/")
+def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db)):
+    # ONG creadora
+    creador = db.query(ONG).filter(ONG.nombre == data.creador.nombre).first()
+    if not creador:
+        creador = ONG(nombre=data.creador.nombre)
+        db.add(creador)
+        db.commit()
+        db.refresh(creador)
+    # Proyecto
+    proyecto = Proyecto(nombre=data.nombre, creador=creador)
+    db.add(proyecto)
+    db.commit()
+    db.refresh(proyecto)
+    # ONGs participantes
+    for ong_in in data.ongs_participantes:
+        ong = db.query(ONG).filter(ONG.nombre == ong_in.nombre).first()
+        if not ong:
+            ong = ONG(nombre=ong_in.nombre)
+            db.add(ong)
+            db.commit()
+            db.refresh(ong)
+        proyecto.ongs.append(ong)
+    # Planes de trabajo
+    for plan_in in data.planes_trabajo:
+        plan = PlanTrabajo(nombre=plan_in.nombre, proyecto=proyecto)
+        db.add(plan)
+    # Etapas
+    for etapa_in in data.etapas:
+        etapa = Etapa(nombre=etapa_in.nombre, proyecto=proyecto)
+        db.add(etapa)
+    # Pedidos de cobertura
+    for pedido_in in data.pedidos_cobertura:
+        tipo = db.query(TipoCobertura).filter(TipoCobertura.nombre == pedido_in.tipo_cobertura.nombre).first()
+        if not tipo:
+            tipo = TipoCobertura(nombre=pedido_in.tipo_cobertura.nombre)
+            db.add(tipo)
+            db.commit()
+            db.refresh(tipo)
+        pedido = PedidoCobertura(descripcion=pedido_in.descripcion, proyecto=proyecto, tipo_cobertura=tipo)
+        db.add(pedido)
+    # Compromisos
+    for compromiso_in in data.compromisos:
+        compromiso = Compromiso(descripcion=compromiso_in.descripcion, proyecto=proyecto)
+        db.add(compromiso)
+    db.commit()
+    return {"id": proyecto.id, "nombre": proyecto.nombre}
