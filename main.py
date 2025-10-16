@@ -135,21 +135,6 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 # ==============================
 # ENDPOINT PARA CREAR PROYECTOS
 # ==============================
-@app.post("/projects")
-def create_project(project: ProjectCreate, current_user: User = Depends(get_current_user)):
-    db: Session = SessionLocal()
-    existing = db.query(Project).filter(Project.name == project.name).first()
-    if existing:
-        db.close()
-        raise HTTPException(status_code=400, detail="El proyecto ya existe")
-    new_project = Project(name=project.name)
-    db.add(new_project)
-    db.commit()
-    db.refresh(new_project)
-    db.close()
-    return {"message": f"Proyecto '{project.name}' creado correctamente"}
-
-# 1. Crear ONG
 from models import Base
 Base.metadata.create_all(bind=engine)
 from models import ONG
@@ -160,8 +145,23 @@ def get_db():
     finally:
         db.close()
 
+
+        
+@app.post("/projects")
+def create_project(project: ProjectCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    existing = db.query(Project).filter(Project.name == project.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="El proyecto ya existe")
+    new_project = Project(name=project.name)
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
+    return {"message": f"Proyecto '{project.name}' creado correctamente"}
+
+# 1. Crear ONG
+
 @app.post("/ongs/")
-def crear_ong(request: ONGRequest, db: Session = Depends(get_db)):
+def crear_ong(request: ONGRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     ong = ONG(nombre=request.nombre)
     db.add(ong)
     db.commit()
@@ -210,7 +210,8 @@ def crear_proyecto(
     creador_id: int,
     planes_trabajo: list[str] = [],
     pedidos_cobertura: list[dict] = [],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     creador = db.query(ONG).filter(ONG.id == creador_id).first()
     if not creador:
@@ -233,7 +234,7 @@ def crear_proyecto(
 
 # 3. Asociar ONG a Proyecto (Participa)
 @app.post("/proyectos/{proyecto_id}/participa/")
-def agregar_ong_a_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(get_db)):
+def agregar_ong_a_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
     ong = db.query(ONG).filter(ONG.id == ong_id).first()
     if not proyecto or not ong:
@@ -244,7 +245,7 @@ def agregar_ong_a_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(
 
 # 4. Crear Plan de Trabajo
 @app.post("/planes_trabajo/")
-def crear_plan_trabajo(nombre: str, proyecto_id: int, db: Session = Depends(get_db)):
+def crear_plan_trabajo(nombre: str, proyecto_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
     plan = PlanTrabajo(nombre=nombre, proyecto=proyecto)
     db.add(plan)
@@ -254,7 +255,7 @@ def crear_plan_trabajo(nombre: str, proyecto_id: int, db: Session = Depends(get_
 
 # 5. Crear Etapa
 @app.post("/etapas/")
-def crear_etapa(nombre: str, proyecto_id: int, db: Session = Depends(get_db)):
+def crear_etapa(nombre: str, proyecto_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
     etapa = Etapa(nombre=nombre, proyecto=proyecto)
     db.add(etapa)
@@ -267,7 +268,8 @@ def crear_etapa(nombre: str, proyecto_id: int, db: Session = Depends(get_db)):
 def crear_pedido_cobertura(descripcion: str,
                             proyecto_id: int,
                             tipo_id: int,
-                            db: Session = Depends(get_db)):
+                            db: Session = Depends(get_db),
+                            current_user: User = Depends(get_current_user)):
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
     tipo = db.query(TipoCobertura).filter(TipoCobertura.id == tipo_id).first()
     pedido = PedidoCobertura(descripcion=descripcion, proyecto=proyecto, tipo_cobertura=tipo)
@@ -278,7 +280,7 @@ def crear_pedido_cobertura(descripcion: str,
 
 # 7. Crear Compromiso
 @app.post("/compromisos/")
-def crear_compromiso(descripcion: str, proyecto_id: int, db: Session = Depends(get_db)):
+def crear_compromiso(descripcion: str, proyecto_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
     compromiso = Compromiso(descripcion=descripcion, proyecto=proyecto)
     db.add(compromiso)
@@ -288,7 +290,7 @@ def crear_compromiso(descripcion: str, proyecto_id: int, db: Session = Depends(g
 
 # 8. Crear Tipo de Cobertura
 @app.post("/tipos_cobertura/")
-def crear_tipo_cobertura(nombre: str, db: Session = Depends(get_db)):
+def crear_tipo_cobertura(nombre: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     tipo = TipoCobertura(nombre=nombre)
     db.add(tipo)
     db.commit()
@@ -297,7 +299,7 @@ def crear_tipo_cobertura(nombre: str, db: Session = Depends(get_db)):
 
 # 9. Crear Proyecto con carga completa
 @app.post("/proyectos/full/")
-def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db)):
+def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     # ONG creadora
     creador = db.query(ONG).filter(ONG.nombre == data.creador.nombre).first()
     if not creador:
