@@ -68,6 +68,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 fake_user_db = {
     "admin": {
         "username": "admin",
+        "email":"admin@ejemplo.com",
         "hashed_password": pwd_context.hash("123"),  # contraseña: 123
     }
 }

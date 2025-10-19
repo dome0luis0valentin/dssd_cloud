@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine
+from passlib.context import CryptContext
 from sqlalchemy.orm import sessionmaker
 from models import Base, ONG, Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ConsejoDirectivo, User, Observacion
 
@@ -8,6 +9,9 @@ Base.metadata.create_all(engine)  # 🔹 CREA LAS TABLAS SI NO EXISTEN
 
 Session = sessionmaker(bind=engine)
 session = Session()
+
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+
 
 # --- Limpiar tablas para evitar duplicados ---
 for table in reversed(Base.metadata.sorted_tables):
@@ -29,9 +33,17 @@ tipo2 = TipoCobertura(nombre="Educación")
 # Consejo Directivo
 consejo = ConsejoDirectivo(nombre="Consejo Central")
 
-# Usuarios
-user1 = User(nombre="Ana", apellido="Pérez", edad=30, email="ana@ejemplo.com", password="123", ong=ong1, consejo=consejo)
-user2 = User(nombre="Luis", apellido="Gómez", edad=40, email="luis@ejemplo.com", password="123", ong=ong2, consejo=consejo)
+# Usuarios con contraseñas hasheadas
+user1 = User(
+    nombre="Ana", apellido="Pérez", edad=30,
+    email="ana@ejemplo.com", password=pwd_context.hash("123"),
+    ong=ong1, consejo=consejo
+)
+user2 = User(
+    nombre="Luis", apellido="Gómez", edad=40,
+    email="luis@ejemplo.com", password=pwd_context.hash("123"),
+    ong=ong2, consejo=consejo
+)
 
 # Proyectos
 proy1 = Proyecto(nombre="Proyecto Agua Limpia", creador=ong1)
