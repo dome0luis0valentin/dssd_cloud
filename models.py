@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Date, Table, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Table, Boolean, Text
 from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
@@ -15,6 +15,7 @@ class ONG(Base):
     id = Column(Integer, primary_key=True)
     nombre = Column(String, unique=True, nullable=False)
     proyectos = relationship('Proyecto', secondary=ong_proyecto_participa, back_populates='ongs')
+    usuarios = relationship('User', back_populates='ong')  #  agregado para coherencia josue
 
 class Proyecto(Base):
     __tablename__ = 'proyectos'
@@ -27,6 +28,7 @@ class Proyecto(Base):
     etapas = relationship('Etapa', back_populates='proyecto')
     pedidos_cobertura = relationship('PedidoCobertura', back_populates='proyecto')
     compromisos = relationship('Compromiso', back_populates='proyecto')
+    observaciones = relationship('Observacion', back_populates='proyecto')  # 🔹 agregado para coherencia josue
 
 class PlanTrabajo(Base):
     __tablename__ = 'planes_trabajo'
@@ -63,3 +65,36 @@ class Compromiso(Base):
     descripcion = Column(String)
     proyecto_id = Column(Integer, ForeignKey('proyectos.id'))
     proyecto = relationship('Proyecto', back_populates='compromisos')
+    
+class ConsejoDirectivo(Base):
+    __tablename__ = "consejos"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(255), nullable=False)
+
+    miembros = relationship("User", back_populates="consejo")
+    observaciones = relationship("Observacion", back_populates="consejo")
+    
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100))
+    apellido = Column(String(100))
+    edad = Column(Integer)
+    email = Column(String(255), unique=True, index=True)
+    password = Column(String(255))
+
+    ong_id = Column(Integer, ForeignKey("ongs.id"), nullable=True)
+    consejo_id = Column(Integer, ForeignKey("consejos.id"), nullable=True)
+
+    ong = relationship("ONG", back_populates="usuarios")
+    consejo = relationship("ConsejoDirectivo", back_populates="miembros")
+
+class Observacion(Base):
+    __tablename__ = "observaciones"
+    id = Column(Integer, primary_key=True, index=True)
+    proyecto_id = Column(Integer, ForeignKey("proyectos.id"))
+    consejo_id = Column(Integer, ForeignKey("consejos.id"))
+    descripcion = Column(Text, nullable=False)
+
+    proyecto = relationship("Proyecto", back_populates="observaciones")
+    consejo = relationship("ConsejoDirectivo", back_populates="observaciones")

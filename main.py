@@ -439,3 +439,67 @@ def marcar_etapa_de_proyecto_cumplida(
     db.commit()
     db.refresh(etapa)
     return etapa
+# ==============================
+# ENDPOINT PARA VER OBSERVACIONES DE PROYECTO
+# ==============================
+from models import Observacion, Proyecto, User
+
+# 1️⃣ Observaciones de un proyecto (Admin)
+@app.get("/proyectos/{proyecto_id}/observaciones/admin")
+def get_observaciones_proyecto_admin(
+    proyecto_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    # Validación simple de admin
+    if current_user.username != "admin":
+        raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
+
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+    return [
+        {"id": obs.id, "descripcion": obs.descripcion, "consejo": obs.consejo.nombre}
+        for obs in proyecto.observaciones
+    ]
+
+# 2️⃣ Todas las observaciones (Admin)
+@app.get("/observaciones/all")
+def get_all_observaciones(
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.username != "admin":
+        raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
+    
+    observaciones = db.query(Observacion).all()
+    return [
+        {
+            "id": obs.id,
+            "proyecto": obs.proyecto.nombre,
+            "descripcion": obs.descripcion,
+            "consejo": obs.consejo.nombre
+        }
+        for obs in observaciones
+    ]
+
+# 3️⃣ Observaciones para responsables de un proyecto (ONG creadora)
+@app.get("/proyectos/{proyecto_id}/observaciones")
+def get_observaciones_proyecto_responsables(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+
+    # Validación: solo usuarios de la ONG creadora pueden ver
+    if proyecto.creador_id != current_user.ong_id:
+        raise HTTPException(status_code=403, detail="No tienes permisos para ver estas observaciones")
+
+    return [
+        {"id": obs.id, "descripcion": obs.descripcion, "consejo": obs.consejo.nombre}
+        for obs in proyecto.observaciones
+    ]
