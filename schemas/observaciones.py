@@ -1,13 +1,18 @@
 from pydantic import BaseModel
-from typing import Optional
 
-class ObservacionBase(BaseModel):
-    descripcion: str
-    consejo_nombre: Optional[str] = None  # Nombre del consejo que hizo la observación
-
-class ObservacionOut(ObservacionBase):
+class ObservacionOut(BaseModel):
     id: int
-    proyecto_nombre: Optional[str] = None  # Nombre del proyecto asociado
+    descripcion: str
+    consejo: str
+
+    class Config:
+        orm_mode = True
+
+class ObservacionAdminOut(BaseModel):
+    id: int
+    proyecto: str
+    descripcion: str
+    consejo: str
 
     class Config:
         orm_mode = True

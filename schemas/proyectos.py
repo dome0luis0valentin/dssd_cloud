@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 from typing import List
 
+class ProjectCreate(BaseModel):
+    name: str
+
 class PlanTrabajoIn(BaseModel):
     nombre: str
 

@@ -1,8 +1,13 @@
 from pydantic import BaseModel
 from typing import List
 
-class ONGBase(BaseModel):
+class ONGRequest(BaseModel):
+    nombre: str
+    usuario_ids: List[int] = []
+
+class ONGOut(BaseModel):
+    id: int
     nombre: str
 
-class ONGCreate(ONGBase):
-    usuario_ids: List[int] = []
+    class Config:
+        orm_mode = True
