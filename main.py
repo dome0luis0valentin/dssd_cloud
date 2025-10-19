@@ -9,6 +9,8 @@ from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 import api_project
 from database import SessionLocal
+from models import User as UserModel  # Importa tu modelo de SQLAlchemy
+
 
 # ==============================
 # CONFIGURACIÓN GENERAL
@@ -76,24 +78,35 @@ fake_user_db = {
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
-def get_user(username: str):
-    user_dict = fake_user_db.get(username)
-    if user_dict:
-        return UserInDB(**user_dict)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-def authenticate_user(username: str, password: str):
-    user = get_user(username)
-    if not user or not verify_password(password, user.hashed_password):
-        return False
+def get_user_by_email(db: Session, email: str):
+    """Obtiene un usuario por email desde la base de datos"""
+    return db.query(UserModel).filter(UserModel.email == email).first()
+
+def authenticate_user(db: Session, email: str, password: str):
+    """Autentica usuario verificando el email y la contraseña"""
+    user = get_user_by_email(db, email)
+    if not user:
+        return None
+    if not verify_password(password, user.password):
+        return None
     return user
 
 def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None):
+    """Crea un token JWT con tiempo de expiración"""
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """Decodifica el token JWT y devuelve el usuario autenticado"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudieron validar las credenciales",
@@ -101,12 +114,16 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        return get_user(username)
     except JWTError:
         raise credentials_exception
+
+    user = get_user_by_email(db, email=email)
+    if user is None:
+        raise credentials_exception
+    return user
 
 # ==============================
 # APLICACIÓN FASTAPI
@@ -125,12 +142,16 @@ def read_item(item_id: int, q: Union[str, None] = None):
 # ENDPOINT DE AUTENTICACIÓN
 # ==============================
 @app.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(form_data.username, form_data.password)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    email = form_data.username  # OAuth2 usa "username", pero acá será el email
+    user = authenticate_user(db, email, form_data.password)
     if not user:
-        raise HTTPException(status_code=400, detail="Usuario o contraseña incorrectos")
+        raise HTTPException(status_code=400, detail="Email o contraseña incorrectos")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
+    access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
 
 # ==============================
@@ -139,6 +160,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 from models import Base
 Base.metadata.create_all(bind=engine)
 from models import ONG
+
+# se define 2 veces get_db, eliminar este duplicado
 def get_db():
     db = SessionLocal()
     try:
@@ -453,7 +476,7 @@ def get_observaciones_proyecto_admin(
     current_user: User = Depends(get_current_user)
 ):
     # Validación simple de admin
-    if current_user.username != "admin":
+    if current_user.email != "admin@ejemplo.com":
         raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
 
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
@@ -471,7 +494,7 @@ def get_all_observaciones(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.username != "admin":
+    if current_user.email != "admin@ejemplo.com":
         raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
     
     observaciones = db.query(Observacion).all()
