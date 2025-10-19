@@ -14,7 +14,7 @@ from database import SessionLocal
 # CONFIGURACIÓN GENERAL
 # ==============================
 import os
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = "clave_super_secreta_para_jwt"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -68,7 +68,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 fake_user_db = {
     "admin": {
         "username": "admin",
-        "hashed_password": pwd_context.hash("123"),  # contraseña: 1234
+        "hashed_password": pwd_context.hash("123"),  # contraseña: 123
     }
 }
 
@@ -373,3 +373,69 @@ def get_tipos_cobertura(db: Session = Depends(get_db), current_user: User = Depe
 @app.get("/compromisos/")
 def get_compromisos(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return db.query(Compromiso).all()
+
+class EtapaOut(BaseModel):
+    id: int
+    nombre: str
+    cumplida: bool
+
+    class Config:
+        orm_mode = True
+
+
+# --- Endpoint para que una ONG participe en un proyecto ---
+@app.post("/proyectos/{proyecto_id}/participantes/{ong_id}")
+def participar_en_proyecto(
+    proyecto_id: int, 
+    ong_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proyecto no encontrado")
+
+    ong = db.query(ONG).filter(ONG.id == ong_id).first()
+    if not ong:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ONG no encontrada")
+
+    if ong in proyecto.ongs:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La ONG ya participa en este proyecto")
+
+    proyecto.ongs.append(ong)
+    db.commit()
+    return {"message": f"ONG '{ong.nombre}' ahora participa en el proyecto '{proyecto.nombre}'"}
+
+
+
+@app.put("/proyectos/{proyecto_id}/etapas/{etapa_id}/marcar-cumplida", 
+    response_model=EtapaOut,
+)
+def marcar_etapa_de_proyecto_cumplida(
+    proyecto_id: int,
+    etapa_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+
+    etapa = db.query(Etapa).filter(
+        Etapa.id == etapa_id, 
+        Etapa.proyecto_id == proyecto_id
+    ).first()
+
+    if not etapa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"La etapa con ID {etapa_id} no fue encontrada en el proyecto {proyecto_id}"
+        )
+
+    if etapa.cumplida:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="La etapa ya está marcada como cumplida"
+        )
+
+    etapa.cumplida = True
+    db.commit()
+    db.refresh(etapa)
+    return etapa

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Date, Table
+from sqlalchemy import Column, Integer, String, ForeignKey, Date, Table, Boolean
 from sqlalchemy.orm import relationship, declarative_base
 
 Base = declarative_base()
@@ -26,6 +26,7 @@ class Proyecto(Base):
     planes_trabajo = relationship('PlanTrabajo', back_populates='proyecto')
     etapas = relationship('Etapa', back_populates='proyecto')
     pedidos_cobertura = relationship('PedidoCobertura', back_populates='proyecto')
+    compromisos = relationship('Compromiso', back_populates='proyecto')
 
 class PlanTrabajo(Base):
     __tablename__ = 'planes_trabajo'
@@ -38,6 +39,7 @@ class Etapa(Base):
     __tablename__ = 'etapas'
     id = Column(Integer, primary_key=True)
     nombre = Column(String)
+    cumplida = Column(Boolean, default=False, nullable=False)
     proyecto_id = Column(Integer, ForeignKey('proyectos.id'))
     proyecto = relationship('Proyecto', back_populates='etapas')
 
@@ -60,4 +62,4 @@ class Compromiso(Base):
     id = Column(Integer, primary_key=True)
     descripcion = Column(String)
     proyecto_id = Column(Integer, ForeignKey('proyectos.id'))
-    proyecto = relationship('Proyecto')
+    proyecto = relationship('Proyecto', back_populates='compromisos')
