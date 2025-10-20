@@ -228,7 +228,7 @@ def participar_en_proyecto(
     db.commit()
     return {"message": f"ONG '{ong.nombre}' ahora participa en el proyecto '{proyecto.nombre}'"}
 
-# ------- Marcar etapa cumplida (ya tenían esta lógica) -------
+
 from pydantic import BaseModel
 class EtapaOut(BaseModel):
     id: int
@@ -236,7 +236,26 @@ class EtapaOut(BaseModel):
     cumplida: bool
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+@router.get(
+    "/proyectos/{proyecto_id}/etapas"
+)
+def obtener_etapas_de_proyecto(
+    proyecto_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user)
+):
+  
+    # Primero, verificamos que el proyecto exista
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El proyecto con ID {proyecto_id} no fue encontrado."
+        )
+    
+    return proyecto.etapas
 
 @router.put("/{proyecto_id}/etapas/{etapa_id}/marcar-cumplida", response_model=EtapaOut)
 def marcar_etapa_de_proyecto_cumplida(
