@@ -1,16 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
 from utils.security import get_current_user, get_db
 from schemas.proyectos import ProjectCreate, ProyectoFullIn
-from models import Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ONG
+from models import Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ONG, Observacion, User
 
 router = APIRouter(
     prefix="/proyectos",
     tags=["proyectos"]
 )
 
+# ------- Mantener la versión con ProjectCreate (pydantic) -------
 @router.post("/")
 def create_project(project: ProjectCreate, current_user=Depends(get_current_user), db: Session = Depends(get_db)):
     existing = db.query(Proyecto).filter(Proyecto.nombre == project.name).first()
@@ -22,20 +23,126 @@ def create_project(project: ProjectCreate, current_user=Depends(get_current_user
     db.refresh(new_project)
     return {"message": f"Proyecto '{project.name}' creado correctamente"}
 
+# ------- 2. Crear Proyecto con Planes de Trabajo y Pedidos de Cobertura (firma alternativa) -------
+@router.post("/crear_con_params/")
+def crear_proyecto(
+    nombre: str,
+    creador_id: int,
+    planes_trabajo: list[str] = [],
+    pedidos_cobertura: list[dict] = [],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    creador = db.query(ONG).filter(ONG.id == creador_id).first()
+    if not creador:
+        raise HTTPException(status_code=404, detail="ONG creadora no encontrada")
+    proyecto = Proyecto(nombre=nombre, creador=creador)
+    db.add(proyecto)
+    db.commit()
+    db.refresh(proyecto)
+    # Cargar planes de trabajo
+    for nombre_plan in planes_trabajo:
+        plan = PlanTrabajo(nombre=nombre_plan, proyecto=proyecto)
+        db.add(plan)
+    # Cargar pedidos de cobertura
+    for pedido in pedidos_cobertura:
+        tipo = db.query(TipoCobertura).filter(TipoCobertura.id == pedido["tipo_id"]).first()
+        pedido_obj = PedidoCobertura(descripcion=pedido["descripcion"], proyecto=proyecto, tipo_cobertura=tipo)
+        db.add(pedido_obj)
+    db.commit()
+    return {"id": proyecto.id, "nombre": proyecto.nombre}
+
+# ------- 3. Asociar ONG a Proyecto (Participa) -------
+@router.post("/{proyecto_id}/participa/")
+def agregar_ong_a_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    ong = db.query(ONG).filter(ONG.id == ong_id).first()
+    if not proyecto or not ong:
+        raise HTTPException(status_code=404, detail="Proyecto u ONG no encontrados")
+    proyecto.ongs.append(ong)
+    db.commit()
+    return {"message": "ONG asociada al proyecto"}
+
+# ------- 4. Crear Plan de Trabajo -------
+@router.post("/planes_trabajo/")
+def crear_plan_trabajo(nombre: str, proyecto_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    plan = PlanTrabajo(nombre=nombre, proyecto=proyecto)
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return {"id": plan.id, "nombre": plan.nombre}
+
+# ------- 5. Crear Etapa -------
+@router.post("/etapas/")
+def crear_etapa(nombre: str, proyecto_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    etapa = Etapa(nombre=nombre, proyecto=proyecto)
+    db.add(etapa)
+    db.commit()
+    db.refresh(etapa)
+    return {"id": etapa.id, "nombre": etapa.nombre}
+
+# ------- 6. Crear Pedido de Cobertura -------
+@router.post("/pedidos_cobertura/")
+def crear_pedido_cobertura(descripcion: str,
+                            proyecto_id: int,
+                            tipo_id: int,
+                            db: Session = Depends(get_db),
+                            current_user = Depends(get_current_user)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    tipo = db.query(TipoCobertura).filter(TipoCobertura.id == tipo_id).first()
+    if not tipo:
+        raise HTTPException(status_code=404, detail="Tipo de cobertura no encontrado")
+    pedido = PedidoCobertura(descripcion=descripcion, proyecto=proyecto, tipo_cobertura=tipo)
+    db.add(pedido)
+    db.commit()
+    db.refresh(pedido)
+    return {"id": pedido.id, "descripcion": pedido.descripcion}
+
+# ------- 7. Crear Compromiso -------
+@router.post("/compromisos/")
+def crear_compromiso(descripcion: str, proyecto_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+    compromiso = Compromiso(descripcion=descripcion, proyecto=proyecto)
+    db.add(compromiso)
+    db.commit()
+    db.refresh(compromiso)
+    return {"id": compromiso.id, "descripcion": compromiso.descripcion}
+
+# ------- 8. Crear Tipo de Cobertura -------
+@router.post("/tipos_cobertura/")
+def crear_tipo_cobertura(nombre: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    tipo = TipoCobertura(nombre=nombre)
+    db.add(tipo)
+    db.commit()
+    db.refresh(tipo)
+    return {"id": tipo.id, "nombre": tipo.nombre}
+
+# ------- 9. Crear Proyecto con carga completa -------
 @router.post("/full/")
 def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    # ONG creadora
     creador = db.query(ONG).filter(ONG.nombre == data.creador.nombre).first()
     if not creador:
         creador = ONG(nombre=data.creador.nombre)
         db.add(creador)
         db.commit()
         db.refresh(creador)
-
+    # Proyecto
     proyecto = Proyecto(nombre=data.nombre, creador=creador)
     db.add(proyecto)
     db.commit()
     db.refresh(proyecto)
-
+    # ONGs participantes
     for ong_in in data.ongs_participantes:
         ong = db.query(ONG).filter(ONG.nombre == ong_in.nombre).first()
         if not ong:
@@ -44,13 +151,15 @@ def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db), cur
             db.commit()
             db.refresh(ong)
         proyecto.ongs.append(ong)
-
+    # Planes de trabajo
     for plan_in in data.planes_trabajo:
         plan = PlanTrabajo(nombre=plan_in.nombre, proyecto=proyecto)
         db.add(plan)
+    # Etapas
     for etapa_in in data.etapas:
         etapa = Etapa(nombre=etapa_in.nombre, proyecto=proyecto)
         db.add(etapa)
+    # Pedidos de cobertura
     for pedido_in in data.pedidos_cobertura:
         tipo = db.query(TipoCobertura).filter(TipoCobertura.nombre == pedido_in.tipo_cobertura.nombre).first()
         if not tipo:
@@ -60,20 +169,100 @@ def crear_proyecto_full(data: ProyectoFullIn, db: Session = Depends(get_db), cur
             db.refresh(tipo)
         pedido = PedidoCobertura(descripcion=pedido_in.descripcion, proyecto=proyecto, tipo_cobertura=tipo)
         db.add(pedido)
+    # Compromisos
     for compromiso_in in data.compromisos:
         compromiso = Compromiso(descripcion=compromiso_in.descripcion, proyecto=proyecto)
         db.add(compromiso)
     db.commit()
     return {"id": proyecto.id, "nombre": proyecto.nombre}
 
+# ------- GETs (listas) -------
+@router.get("/ongs/")
+def get_ongs(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(ONG).all()
+
+@router.get("/")
+def get_proyectos(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(Proyecto).all()
+
+@router.get("/planes_trabajo/")
+def get_planes_trabajo(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(PlanTrabajo).all()
+
+@router.get("/etapas/")
+def get_etapas(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(Etapa).all()
+
+@router.get("/pedidos_cobertura/")
+def get_pedidos_cobertura(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(PedidoCobertura).all()
+
+@router.get("/tipos_cobertura/")
+def get_tipos_cobertura(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(TipoCobertura).all()
+
+@router.get("/compromisos/")
+def get_compromisos(db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+    return db.query(Compromiso).all()
+
+# ------- Endpoint para que una ONG participe en un proyecto (otra ruta con formato distinto) -------
 @router.post("/{proyecto_id}/participantes/{ong_id}")
-def participar_en_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def participar_en_proyecto(
+    proyecto_id: int,
+    ong_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proyecto no encontrado")
+
     ong = db.query(ONG).filter(ONG.id == ong_id).first()
-    if not proyecto or not ong:
-        raise HTTPException(status_code=404, detail="Proyecto u ONG no encontrados")
+    if not ong:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ONG no encontrada")
+
     if ong in proyecto.ongs:
-        raise HTTPException(status_code=409, detail="La ONG ya participa en este proyecto")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La ONG ya participa en este proyecto")
+
     proyecto.ongs.append(ong)
     db.commit()
     return {"message": f"ONG '{ong.nombre}' ahora participa en el proyecto '{proyecto.nombre}'"}
+
+# ------- Marcar etapa cumplida (ya tenían esta lógica) -------
+from pydantic import BaseModel
+class EtapaOut(BaseModel):
+    id: int
+    nombre: str
+    cumplida: bool
+
+    class Config:
+        orm_mode = True
+
+@router.put("/{proyecto_id}/etapas/{etapa_id}/marcar-cumplida", response_model=EtapaOut)
+def marcar_etapa_de_proyecto_cumplida(
+    proyecto_id: int,
+    etapa_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    etapa = db.query(Etapa).filter(
+        Etapa.id == etapa_id,
+        Etapa.proyecto_id == proyecto_id
+    ).first()
+
+    if not etapa:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"La etapa con ID {etapa_id} no fue encontrada en el proyecto {proyecto_id}"
+        )
+
+    if etapa.cumplida:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La etapa ya está marcada como cumplida"
+        )
+
+    etapa.cumplida = True
+    db.commit()
+    db.refresh(etapa)
+    return etapa
