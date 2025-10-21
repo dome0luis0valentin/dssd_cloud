@@ -4,7 +4,9 @@ from typing import List
 
 from utils.security import get_current_user, get_db
 from schemas.proyectos import ProjectCreate, ProyectoFullIn
-from models import Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ONG, Observacion, User
+from schemas.compromisos import CompromisoOut
+from schemas.pedidos import PedidoCoberturaOut
+from models import Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ONG, Observacion, User 
 
 router = APIRouter(
     prefix="/proyectos",
@@ -236,7 +238,7 @@ class EtapaOut(BaseModel):
     cumplida: bool
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 @router.get(
     "/proyectos/{proyecto_id}/etapas"
@@ -285,3 +287,104 @@ def marcar_etapa_de_proyecto_cumplida(
     db.commit()
     db.refresh(etapa)
     return etapa
+
+
+@router.get(
+    "/{proyecto_id}/pedidos_colaboracion",
+    response_model=List[PedidoCoberturaOut],
+)
+def obtener_pedidos_de_colaboracion_por_proyecto(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El proyecto con ID {proyecto_id} no fue encontrado."
+        )
+    
+    return proyecto.pedidos_cobertura
+
+@router.post(
+    "/pedidos_colaboracion/{pedido_id}/comprometerse/{ong_id}",
+    response_model=CompromisoOut,
+    tags=["Compromisos"]
+)
+def comprometerse_a_pedido(
+    pedido_id: int,
+    ong_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+ 
+    pedido = db.query(PedidoCobertura).filter(PedidoCobertura.id == pedido_id).first()
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido de colaboración no encontrado")
+
+    if pedido.compromiso:
+        raise HTTPException(status_code=400, detail="Este pedido ya tiene un compromiso asociado")
+
+    ong = db.query(ONG).filter(ONG.id == ong_id).first()
+    if not ong:
+        raise HTTPException(status_code=404, detail="ONG no encontrada")
+
+    nuevo_compromiso = Compromiso(ong=ong, pedido=pedido)
+    db.add(nuevo_compromiso)
+    db.commit()
+    db.refresh(nuevo_compromiso)
+    
+    return nuevo_compromiso
+
+
+@router.get(
+    "/{ong_id}/compromisos",
+    response_model=List[CompromisoOut] 
+)
+def obtener_compromisos_de_ong(
+    ong_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+
+    ong = db.query(ONG).filter(ONG.id == ong_id).first()
+    if not ong:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"La ONG con ID {ong_id} no fue encontrada."
+        )
+
+
+    return ong.compromisos
+
+
+@router.put(
+    "/{compromiso_id}/marcar-realizado",
+    response_model=CompromisoOut
+)
+def marcar_compromiso_realizado(
+    compromiso_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+
+    compromiso = db.query(Compromiso).filter(Compromiso.id == compromiso_id).first()
+    if not compromiso:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El compromiso con ID {compromiso_id} no fue encontrado."
+        )
+    
+    if compromiso.realizado:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este compromiso ya está marcado como realizado."
+        )
+
+    compromiso.realizado = True
+    db.commit()
+    db.refresh(compromiso)
+
+   
+    return compromiso

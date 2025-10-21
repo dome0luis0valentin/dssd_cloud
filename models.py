@@ -16,6 +16,7 @@ class ONG(Base):
     nombre = Column(String, unique=True, nullable=False)
     proyectos = relationship('Proyecto', secondary=ong_proyecto_participa, back_populates='ongs')
     usuarios = relationship('User', back_populates='ong')  #  agregado para coherencia josue
+    compromisos = relationship("Compromiso", back_populates="ong")
 
 class Proyecto(Base):
     __tablename__ = 'proyectos'
@@ -53,6 +54,7 @@ class PedidoCobertura(Base):
     proyecto = relationship('Proyecto', back_populates='pedidos_cobertura')
     tipo_cobertura_id = Column(Integer, ForeignKey('tipos_cobertura.id'))
     tipo_cobertura = relationship('TipoCobertura')
+    compromiso = relationship("Compromiso", back_populates="pedido", uselist=False)
 
 class TipoCobertura(Base):
     __tablename__ = 'tipos_cobertura'
@@ -65,6 +67,11 @@ class Compromiso(Base):
     descripcion = Column(String)
     proyecto_id = Column(Integer, ForeignKey('proyectos.id'))
     proyecto = relationship('Proyecto', back_populates='compromisos')
+    realizado = Column(Boolean, default=False, nullable=False)
+    ong_id = Column(Integer, ForeignKey('ongs.id'))
+    ong = relationship("ONG", back_populates="compromisos")
+    pedido_id = Column(Integer, ForeignKey('pedidos_cobertura.id'))
+    pedido = relationship("PedidoCobertura", back_populates="compromiso")
     
 class ConsejoDirectivo(Base):
     __tablename__ = "consejos"
