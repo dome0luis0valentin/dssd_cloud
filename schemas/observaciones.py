@@ -16,3 +16,10 @@ class ObservacionAdminOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+class ObservacionCreate(BaseModel):
+    descripcion: str
+    proyecto_id: int
+
+    class Config:
+        orm_mode = True
