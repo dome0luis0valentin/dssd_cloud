@@ -6,7 +6,7 @@ from utils.security import get_current_user, get_db
 from schemas.proyectos import ProjectCreate, ProyectoFullIn
 from schemas.compromisos import CompromisoOut
 from schemas.pedidos import PedidoCoberturaOut
-from models import Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ONG, Observacion, User 
+from models import Proyecto, PlanTrabajo, Etapa, PedidoCobertura, TipoCobertura, Compromiso, ONG, User 
 
 router = APIRouter(
     prefix="/proyectos",
@@ -53,17 +53,6 @@ def crear_proyecto(
         db.add(pedido_obj)
     db.commit()
     return {"id": proyecto.id, "nombre": proyecto.nombre}
-
-# ------- 3. Asociar ONG a Proyecto (Participa) -------
-@router.post("/{proyecto_id}/participa/")
-def agregar_ong_a_proyecto(proyecto_id: int, ong_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
-    ong = db.query(ONG).filter(ONG.id == ong_id).first()
-    if not proyecto or not ong:
-        raise HTTPException(status_code=404, detail="Proyecto u ONG no encontrados")
-    proyecto.ongs.append(ong)
-    db.commit()
-    return {"message": "ONG asociada al proyecto"}
 
 # ------- 4. Crear Plan de Trabajo -------
 @router.post("/planes_trabajo/")
@@ -259,36 +248,6 @@ def obtener_etapas_de_proyecto(
     
     return proyecto.etapas
 
-@router.put("/{proyecto_id}/etapas/{etapa_id}/marcar-cumplida", response_model=EtapaOut)
-def marcar_etapa_de_proyecto_cumplida(
-    proyecto_id: int,
-    etapa_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    etapa = db.query(Etapa).filter(
-        Etapa.id == etapa_id,
-        Etapa.proyecto_id == proyecto_id
-    ).first()
-
-    if not etapa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"La etapa con ID {etapa_id} no fue encontrada en el proyecto {proyecto_id}"
-        )
-
-    if etapa.cumplida:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La etapa ya está marcada como cumplida"
-        )
-
-    etapa.cumplida = True
-    db.commit()
-    db.refresh(etapa)
-    return etapa
-
-
 @router.get(
     "/{proyecto_id}/pedidos_colaboracion",
     response_model=List[PedidoCoberturaOut],
@@ -310,9 +269,8 @@ def obtener_pedidos_de_colaboracion_por_proyecto(
 @router.post(
     "/pedidos_colaboracion/{pedido_id}/comprometerse/{ong_id}",
     response_model=CompromisoOut,
-    tags=["Compromisos"]
 )
-def comprometerse_a_pedido(
+def comprometer_ong_a_pedido(
     pedido_id: int,
     ong_id: int,
     db: Session = Depends(get_db),
@@ -359,32 +317,60 @@ def obtener_compromisos_de_ong(
     return ong.compromisos
 
 
-@router.put(
-    "/{compromiso_id}/marcar-realizado",
-    response_model=CompromisoOut
+@router.get(
+    "/pedidos_colaboracion/pendientes",
+    response_model=List[PedidoCoberturaOut],
 )
-def marcar_compromiso_realizado(
-    compromiso_id: int,
+def obtener_pedidos_pendientes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    pedidos_pendientes = db.query(PedidoCobertura).filter(
+        PedidoCobertura.compromiso == None
+    ).all()
+    
+    return pedidos_pendientes
 
-    compromiso = db.query(Compromiso).filter(Compromiso.id == compromiso_id).first()
-    if not compromiso:
+@router.get(
+    "/{proyecto_id}/pedidos_colaboracion",
+    response_model=List[PedidoCoberturaOut],
+)
+def obtener_pedidos_de_colaboracion_por_proyecto(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"El compromiso con ID {compromiso_id} no fue encontrado."
+            detail=f"El proyecto con ID {proyecto_id} no fue encontrado."
         )
     
-    if compromiso.realizado:
+    return proyecto.pedidos_cobertura
+
+# En: routers/proyectos.py
+from schemas.ong import ONGOut # Importa el schema
+
+@router.get(
+    "/{proyecto_id}/participantes",
+    response_model=List[ONGOut],
+)
+def obtener_ongs_participantes(
+    proyecto_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene y devuelve una lista de todas las ONGs que participan
+    en un proyecto específico.
+    """
+    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    if not proyecto:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este compromiso ya está marcado como realizado."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"El proyecto con ID {proyecto_id} no fue encontrado."
         )
 
-    compromiso.realizado = True
-    db.commit()
-    db.refresh(compromiso)
-
-   
-    return compromiso
+    # Devolvemos la lista de ONGs participantes a través de la relación
+    return proyecto.ongs

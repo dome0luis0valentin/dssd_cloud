@@ -91,7 +91,6 @@ session.commit()
 # --- Relación Many-to-Many (ONG participa en proyectos) ---
 ong1.proyectos.append(proy1)
 ong2.proyectos.append(proy2)
-ong1.proyectos.append(proy2)
 session.commit()
 
 # --- Planes de trabajo ---
@@ -120,11 +119,6 @@ pedido2 = PedidoCobertura(
 session.add_all([pedido1, pedido2])
 session.commit()
 
-# --- Compromisos ---
-comp1 = Compromiso(descripcion="Proveer filtros de agua", proyecto=proy1)
-comp2 = Compromiso(descripcion="Capacitaciones mensuales", proyecto=proy2)
-session.add_all([comp1, comp2])
-session.commit()
 
 # --- Observaciones (hechas por el consejo, no por ONG) ---
 obs1 = Observacion(descripcion="Buen progreso inicial", proyecto=proy1, consejo=consejo)
