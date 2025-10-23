@@ -49,7 +49,7 @@ def get_ongs(db: Session = Depends(get_db), current_user = Depends(get_current_u
 def participar_en_proyecto(
     proyecto_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) # <-- Usamos el usuario del token
+    current_user: User = Depends(get_current_user) 
 ):
     if not current_user.ong_id:
         raise HTTPException(
@@ -90,13 +90,13 @@ def obtener_mis_compromisos(
 
 
 @router.post(
-    "/pedidos_colaboracion/{pedido_id}/comprometerse", # <- URL sin {ong_id}
+    "/pedidos_colaboracion/{pedido_id}/comprometerse", 
     response_model=CompromisoOut
 )
 def comprometer_a_pedido(
     pedido_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) # <- Obtenemos el usuario del token
+    current_user: User = Depends(get_current_user) 
 ):
     if not current_user.ong_id:
         raise HTTPException(
@@ -117,7 +117,7 @@ def comprometer_a_pedido(
     if ong_del_usuario not in proyecto_del_pedido.ongs:
         proyecto_del_pedido.ongs.append(ong_del_usuario)
 
-    nuevo_compromiso = Compromiso(ong=ong_del_usuario, pedido=pedido)
+    nuevo_compromiso = Compromiso(ong=ong_del_usuario, pedido=pedido, proyecto=proyecto_del_pedido)
     db.add(nuevo_compromiso)
     db.commit()
     db.refresh(nuevo_compromiso)
@@ -166,7 +166,7 @@ def marcar_etapa_de_proyecto_cumplida(
     proyecto_id: int,
     etapa_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) # Añadido el type hint para claridad
+    current_user: User = Depends(get_current_user) 
 ):
     etapa = db.query(Etapa).filter(
         Etapa.id == etapa_id,

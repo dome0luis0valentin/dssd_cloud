@@ -204,6 +204,8 @@ def participar_en_proyecto(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
+    if current_user.email != "admin@ejemplo.com":
+        raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
     proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
     if not proyecto:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proyecto no encontrado")
@@ -230,7 +232,7 @@ class EtapaOut(BaseModel):
         orm_mode = True
 
 @router.get(
-    "/proyectos/{proyecto_id}/etapas"
+    "/{proyecto_id}/etapas"
 )
 def obtener_etapas_de_proyecto(
     proyecto_id: int, 
@@ -276,7 +278,8 @@ def comprometer_ong_a_pedido(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
- 
+    if current_user.email != "admin@ejemplo.com":
+        raise HTTPException(status_code=403, detail="No tienes permisos de administrador")
     pedido = db.query(PedidoCobertura).filter(PedidoCobertura.id == pedido_id).first()
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido de colaboración no encontrado")
