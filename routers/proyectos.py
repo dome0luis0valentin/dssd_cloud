@@ -13,6 +13,7 @@ router = APIRouter(
     tags=["proyectos"]
 )
 
+#creo que lo podemos borrar
 # ------- Mantener la versión con ProjectCreate (pydantic) -------
 @router.post("/")
 def create_project(project: ProjectCreate, current_user=Depends(get_current_user), db: Session = Depends(get_db)):

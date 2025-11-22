@@ -86,6 +86,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(100))
     apellido = Column(String(100))
+    username = Column(String(100), unique=True, index=True)
     edad = Column(Integer)
     email = Column(String(255), unique=True, index=True)
     password = Column(String(255))
