@@ -53,10 +53,16 @@ def crear_observacion(data: ObservacionCreate, db: Session = Depends(get_db), cu
     if not current_user.consejo_id:
         raise HTTPException(status_code=403, detail="Solo miembros del consejo pueden crear observaciones")
     
-    # Validar que el proyecto exista
-    proyecto = db.query(Proyecto).filter(Proyecto.id == data.proyecto_id).first()
+    # Buscar el proyecto por ID o por nombre
+    proyecto = None
+    if data.proyecto_id:
+        proyecto = db.query(Proyecto).filter(Proyecto.id == data.proyecto_id).first()
+    elif data.nombre_proyecto:
+        proyecto = db.query(Proyecto).filter(Proyecto.nombre == data.nombre_proyecto).first()
+    
     if not proyecto:
-        raise HTTPException(status_code=404, detail="Proyecto no encontrado")
+        error_msg = f"Proyecto no encontrado con {'ID ' + str(data.proyecto_id) if data.proyecto_id else 'nombre ' + data.nombre_proyecto}"
+        raise HTTPException(status_code=404, detail=error_msg)
     
     observacion = Observacion(
         descripcion=data.descripcion,
