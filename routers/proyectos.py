@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from utils.security import get_current_user, get_db
 from schemas.proyectos import ProjectCreate, ProyectoFullIn
@@ -69,15 +69,45 @@ def crear_plan_trabajo(nombre: str, proyecto_id: int, db: Session = Depends(get_
 
 # ------- 5. Crear Etapa -------
 @router.post("/etapas/")
-def crear_etapa(nombre: str, proyecto_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
-    proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+def crear_etapa(
+    nombres: List[str] = [],
+    proyecto_id: Optional[int] = None, 
+    nombre_proyecto: Optional[str] = None,
+    db: Session = Depends(get_db), 
+    current_user = Depends(get_current_user)
+):
+    # Validar que se proporcione al menos un identificador del proyecto
+    if not proyecto_id and not nombre_proyecto:
+        raise HTTPException(status_code=400, detail="Debe proporcionar proyecto_id o nombre_proyecto")
+    
+    # Buscar el proyecto por ID o nombre
+    if proyecto_id:
+        proyecto = db.query(Proyecto).filter(Proyecto.id == proyecto_id).first()
+    else:
+        proyecto = db.query(Proyecto).filter(Proyecto.nombre == nombre_proyecto).first()
+    
     if not proyecto:
         raise HTTPException(status_code=404, detail="Proyecto no encontrado")
-    etapa = Etapa(nombre=nombre, proyecto=proyecto)
-    db.add(etapa)
+    
+    # Crear las etapas
+    etapas_creadas = []
+    for nombre in nombres:
+        etapa = Etapa(nombre=nombre, proyecto=proyecto)
+        db.add(etapa)
+        etapas_creadas.append(etapa)
+    
     db.commit()
-    db.refresh(etapa)
-    return {"id": etapa.id, "nombre": etapa.nombre}
+    
+    # Refrescar las etapas y preparar respuesta
+    for etapa in etapas_creadas:
+        db.refresh(etapa)
+    
+    if len(etapas_creadas) == 1:
+        return {"id": etapas_creadas[0].id, "nombre": etapas_creadas[0].nombre}
+    elif len(etapas_creadas) > 1:
+        return {"etapas_creadas": [{"id": etapa.id, "nombre": etapa.nombre} for etapa in etapas_creadas]}
+    else:
+        return {"mensaje": "No se crearon etapas"}
 
 # ------- 6. Crear Pedido de Cobertura -------
 @router.post("/pedidos_cobertura/")
